@@ -59,13 +59,13 @@ public class FirebasePushPlugin extends Plugin {
                     this.sendStacked();
                     call.resolve();
 
-                    FirebaseMessaging
+                    FirebaseInstallations
                         .getInstance()
-                        .getToken()
+                        .getToken(true)
                         .addOnCompleteListener(
                             task -> {
                                 if (task.isSuccessful()) {
-                                    this.sendToken(task.getResult());
+                                    this.sendToken(task.getResult().getToken());
                                 }
                             }
                         );
