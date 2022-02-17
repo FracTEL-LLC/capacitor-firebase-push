@@ -49,30 +49,33 @@ public class FirebasePushPlugin extends Plugin {
         staticBridge = this.bridge;
     }
 
-    @PluginMethod
-    public void register(PluginCall call) {
-        new Handler()
-            .post(
-                () -> {
-                    FirebaseApp.initializeApp(this.getContext());
-                    registered = true;
-                    this.sendStacked();
-                    call.resolve();
-
-                    FirebaseInstallations
-                        .getInstance()
-                        .getToken(true)
-                        .addOnCompleteListener(
-                            task -> {
-                                if (task.isSuccessful()) {
-                                    this.sendToken(task.getResult().getToken());
-                                }
-                            }
-                        );
-                }
-            );
-    }
-
+  @PluginMethod
+  public void register(PluginCall call) {
+    FirebaseMessaging.getInstance().setAutoInitEnabled(true);
+    FirebaseInstanceId
+      .getInstance()
+      .getInstanceId()
+      .addOnSuccessListener(
+        getActivity(),
+        new OnSuccessListener<InstanceIdResult>() {
+          @Override
+          public void onSuccess(InstanceIdResult instanceIdResult) {
+            sendToken(instanceIdResult.getToken());
+          }
+        }
+      );
+    FirebaseInstanceId
+      .getInstance()
+      .getInstanceId()
+      .addOnFailureListener(
+        new OnFailureListener() {
+          public void onFailure(Exception e) {
+            Log.e(String.valueOf(e),"ah!");
+          }
+        }
+      );
+    call.resolve();
+  }
     @PluginMethod
     public void unregister(PluginCall call) {
         new Handler()
