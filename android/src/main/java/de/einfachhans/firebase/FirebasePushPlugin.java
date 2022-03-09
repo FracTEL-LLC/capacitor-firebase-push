@@ -4,6 +4,7 @@ import android.app.Notification;
 import android.app.NotificationManager;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -19,8 +20,12 @@ import com.getcapacitor.PluginHandle;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
+import com.google.android.gms.auth.api.signin.internal.Storage;
+import com.google.android.gms.tasks.OnFailureListener;
+import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.firebase.FirebaseApp;
 import com.google.firebase.iid.FirebaseInstanceId;
+import com.google.firebase.iid.InstanceIdResult;
 import com.google.firebase.installations.FirebaseInstallations;
 import com.google.firebase.messaging.FirebaseMessaging;
 import com.google.firebase.messaging.RemoteMessage;
@@ -47,44 +52,91 @@ public class FirebasePushPlugin extends Plugin {
         notificationManager = (NotificationManager) getActivity().getSystemService(Context.NOTIFICATION_SERVICE);
 
         staticBridge = this.bridge;
+
+        if (isIncomingCall())
+            Log.d("incomingCall", "exists FirebasePush");
     }
 
-  @PluginMethod
-  public void register(PluginCall call) {
-    FirebaseMessaging.getInstance().setAutoInitEnabled(true);
-    FirebaseInstanceId
-      .getInstance()
-      .getInstanceId()
-      .addOnSuccessListener(
-        getActivity(),
-        new OnSuccessListener<InstanceIdResult>() {
-          @Override
-          public void onSuccess(InstanceIdResult instanceIdResult) {
-            sendToken(instanceIdResult.getToken());
-          }
-        }
-      );
-    FirebaseInstanceId
-      .getInstance()
-      .getInstanceId()
-      .addOnFailureListener(
-        new OnFailureListener() {
-          public void onFailure(Exception e) {
-            Log.e(String.valueOf(e),"ah!");
-          }
-        }
-      );
-    call.resolve();
-  }
+    // TODO create method to delete all storage
+    @PluginMethod
+    public void deleteStorage(PluginCall call) {
+
+        removeAllPreferences();
+        call.resolve();
+
+    }
+
+    // TODO: create method to check incomingCall status
+    @PluginMethod
+    public void hasStorage(PluginCall call) {
+        JSObject data = new JSObject();
+        data.put("value", isIncomingCall());
+        call.resolve(data);
+    }
+    // @PluginMethod
+    // public void register(PluginCall call) {
+    // new Handler()
+    // .post(
+    // () -> {
+    // FirebaseApp.initializeApp(this.getContext());
+    // registered = true;
+    // this.sendStacked();
+    // call.resolve();
+    //
+    // FirebaseInstallations
+    // .getInstance()
+    // .getToken(true)
+    // .addOnCompleteListener(
+    // task -> {
+    // if (task.isSuccessful()) {
+    // this.sendToken(task.getResult().getToken());
+    // }
+    // });
+    // });
+    // }
+
+    @PluginMethod
+    public void register(PluginCall call) {
+        new Handler()
+                .post(
+                        () -> {
+                            FirebaseApp.initializeApp(this.getContext());
+                            registered = true;
+                            this.sendStacked();
+                            call.resolve();
+                            FirebaseMessaging.getInstance().setAutoInitEnabled(true);
+                            FirebaseInstanceId
+                                    .getInstance()
+                                    .getInstanceId()
+                                    .addOnSuccessListener(
+                                            getActivity(),
+                                            new OnSuccessListener<InstanceIdResult>() {
+                                                @Override
+                                                public void onSuccess(InstanceIdResult instanceIdResult) {
+                                                    sendToken(instanceIdResult.getToken());
+                                                }
+                                            });
+                        });
+        FirebaseInstanceId
+                .getInstance()
+                .getInstanceId()
+                .addOnFailureListener(
+                        new OnFailureListener() {
+                            public void onFailure(Exception e) {
+                                Log.e(String.valueOf(e), "ah!");
+                            }
+                        });
+        call.resolve();
+    }
+
     @PluginMethod
     public void unregister(PluginCall call) {
         new Handler()
-            .post(
-                () -> {
-                    FirebaseInstallations.getInstance().delete();
-                    call.resolve();
-                }
-            );
+                .post(
+                        () -> {
+                            FirebaseInstallations.getInstance().delete();
+                            call.resolve();
+                        });
     }
 
     @PluginMethod
@@ -123,10 +175,10 @@ public class FirebasePushPlugin extends Plugin {
         call.resolve(result);
     }
 
+    // also removes all preferences from storage
     @PluginMethod
     public void removeDeliveredNotifications(PluginCall call) {
         JSArray notifications = call.getArray("ids");
-
         List<Integer> ids = new ArrayList<>();
         try {
             ids = notifications.toList();
@@ -139,6 +191,20 @@ public class FirebasePushPlugin extends Plugin {
         }
 
         call.resolve();
+    }
+
+    // removed preferences from storage
+    void removeAllPreferences() {
+
+      // Storing incomingCall data into SharedPreferences
+
+
+      SharedPreferences sharedPref = this.getContext().getSharedPreferences("MySharedPref", Context.MODE_PRIVATE);
+        SharedPreferences.Editor editor = sharedPref.edit();
+        editor.clear();
+        editor.apply();
+        Log.d(TAG, "all shared preferences removed");
+
     }
 
     @PluginMethod
@@ -175,7 +241,7 @@ public class FirebasePushPlugin extends Plugin {
         String channelId = null;
 
         Map<String, String> data = message.getData();
-
+        Log.d(TAG, String.valueOf(data));
         if (message.getNotification() != null) {
             messageType = "notification";
             id = message.getMessageId();
@@ -197,28 +263,27 @@ public class FirebasePushPlugin extends Plugin {
         }
 
         Log.d(
-            TAG,
-            "sendMessage(): messageType=" +
-            messageType +
-            "; id=" +
-            id +
-            "; title=" +
-            title +
-            "; body=" +
-            body +
-            "; sound=" +
-            sound +
-            "; vibrate=" +
-            vibrate +
-            "; color=" +
-            color +
-            "; icon=" +
-            icon +
-            "; channel=" +
-            channelId +
-            "; data=" +
-            data.toString()
-        );
+                TAG,
+                "sendMessage(): messageType=" +
+                        messageType +
+                        "; id=" +
+                        id +
+                        "; title=" +
+                        title +
+                        "; body=" +
+                        body +
+                        "; sound=" +
+                        sound +
+                        "; vibrate=" +
+                        vibrate +
+                        "; color=" +
+                        color +
+                        "; icon=" +
+                        icon +
+                        "; channel=" +
+                        channelId +
+                        "; data=" +
+                        data.toString());
         Bundle bundle = new Bundle();
         for (String key : data.keySet()) {
             bundle.putString(key, data.get(key));
@@ -238,6 +303,7 @@ public class FirebasePushPlugin extends Plugin {
         this.putKVInBundle("google.ttl", String.valueOf(message.getTtl()), bundle);
 
         if (!registered) {
+            Log.d(TAG, "if!registered");
             if (FirebasePushPlugin.notificationStack == null) {
                 FirebasePushPlugin.notificationStack = new ArrayList<>();
             }
@@ -266,9 +332,12 @@ public class FirebasePushPlugin extends Plugin {
 
     public static void onNewRemoteMessage(RemoteMessage message) {
         FirebasePushPlugin pushPlugin = FirebasePushPlugin.getInstance();
+        Log.d(TAG, "onNewRemoteMessage");
         if (pushPlugin != null) {
+            Log.d(TAG, "onNewRemoteMessage, pushPlugin!= null");
             pushPlugin.sendRemoteMessage(message);
         }
+        Log.d(TAG, "pushPlugin=null");
     }
 
     @Override
@@ -283,6 +352,7 @@ public class FirebasePushPlugin extends Plugin {
     }
 
     private void sendStacked() {
+        Log.d(TAG, "sendStacked()");
         if (FirebasePushPlugin.notificationStack != null) {
             for (Bundle bundle : FirebasePushPlugin.notificationStack) {
                 this.sendRemoteBundle(bundle);
@@ -292,13 +362,18 @@ public class FirebasePushPlugin extends Plugin {
     }
 
     public static FirebasePushPlugin getInstance() {
+        Log.d(TAG, "getInstance()");
         if (staticBridge != null && staticBridge.getWebView() != null) {
+            Log.d(TAG, "getInstance()2");
             PluginHandle handle = staticBridge.getPlugin("FirebasePush");
             if (handle == null) {
+                Log.d(TAG, "getInstance()3");
                 return null;
             }
+            Log.d(TAG, "getInstance()4");
             return (FirebasePushPlugin) handle.getInstance();
         }
+        Log.d(TAG, "getInstance()5");
         return null;
     }
 
@@ -306,5 +381,10 @@ public class FirebasePushPlugin extends Plugin {
         if (v != null && !o.containsKey(k)) {
             o.putString(k, v);
         }
+    }
+
+    boolean isIncomingCall() {
+        SharedPreferences sharedPref = this.getContext().getSharedPreferences("MySharedPref", Context.MODE_PRIVATE);
+        return sharedPref.contains("incomingCall");
     }
 }
